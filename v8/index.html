@@ -1,0 +1,794 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="GM LS3 6.2L V8 のクランク・ピストン・OHV動弁系・燃焼ガスを同期させたブラウザ3Dシミュレーター">
+<title>V8 エンジンシミュレーター</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Saira+Condensed:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+/* Layout: 3Dステージが画面左を占め、右に計器パネル列。スマホではステージの下にパネルが積まれる */
+:root{
+  --bg:#0f1216;
+  --stage-hi:#1f262f;
+  --panel:#161a20;
+  --raise:#1d222a;
+  --line:#2b323c;
+  --fg:#e3e7ec;
+  --muted:#8a94a2;
+  --ink:#0f1216;
+  --steel:#9aa6b4;
+  --glass:rgba(15,18,22,.74);
+  --accent:#f2a33a;
+  --intake:#4f9cf0;
+  --comp:#e2c04a;
+  --power:#ff6a2b;
+  --exhaust:#8d93a1;
+  --redline:#e5484d;
+  --f-display:"Saira Condensed","Arial Narrow",sans-serif;
+  --f-body:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:14px;line-height:1.6}
+.app{display:grid;grid-template-columns:minmax(0,1fr) 392px;height:100%}
+
+.stage{position:relative;min-width:0;min-height:0;overflow:hidden;background:radial-gradient(120% 90% at 55% 30%,var(--stage-hi) 0%,var(--bg) 72%)}
+#gl{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none}
+.hud{position:absolute;pointer-events:none}
+.hud-tl{top:16px;left:max(18px,env(safe-area-inset-left,0px))}
+.hud-label{font-family:var(--f-mono);font-size:11px;letter-spacing:.14em;color:var(--muted)}
+.angle{font-family:var(--f-display);font-weight:600;font-size:66px;line-height:.92;font-variant-numeric:tabular-nums}
+.angle small{font-size:22px;color:var(--muted);margin-left:4px;font-weight:500}
+.hud-sub{margin-top:6px;font-size:13px;color:var(--muted)}
+.hud-sub b{color:var(--fg);font-weight:500}
+.views{position:absolute;top:14px;right:max(14px,env(safe-area-inset-right,0px));display:flex;gap:2px;background:var(--glass);border:1px solid var(--line);border-radius:8px;padding:3px}
+.views button{font:500 12px/1 var(--f-body);color:var(--muted);background:transparent;border:0;border-radius:5px;padding:7px 10px;cursor:pointer}
+.views button:hover{color:var(--fg)}
+.views button[aria-pressed="true"]{background:var(--raise);color:var(--fg)}
+.legend{bottom:14px;left:max(18px,env(safe-area-inset-left,0px));display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);background:var(--glass);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend i{width:10px;height:10px;border-radius:2px;display:block}
+.hint{bottom:16px;right:max(16px,env(safe-area-inset-right,0px));font-size:12px;color:var(--muted)}
+.gl-error{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;color:var(--muted)}
+
+.panel{min-width:0;overflow-y:auto;background:var(--panel);border-left:1px solid var(--line);padding-block:22px 32px;padding-left:22px;padding-right:max(22px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:26px}
+.eyebrow{margin:0;font-family:var(--f-mono);font-size:11px;letter-spacing:.14em;color:var(--accent)}
+h1{margin:6px 0 0;font-size:19px;font-weight:700;line-height:1.3;display:flex;align-items:baseline;gap:10px;text-wrap:balance}
+h1 .v8{font-family:var(--f-display);font-size:46px;font-weight:700;line-height:.9}
+.lede{margin:10px 0 0;color:var(--muted);font-size:13px;max-width:60ch}
+
+.inst{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+#tach{width:168px;height:168px;flex:none}
+.readouts{display:grid;gap:12px;min-width:0;flex:1}
+.ro .k{font-size:11px;color:var(--muted);letter-spacing:.06em}
+.ro .v{font-family:var(--f-display);font-size:30px;font-weight:600;line-height:1.05;font-variant-numeric:tabular-nums}
+.ro .v small{font-family:var(--f-body);font-size:12px;color:var(--muted);margin-left:4px;font-weight:400}
+
+.sec{display:flex;flex-direction:column;gap:10px}
+.sec h2{margin:0;font-size:12px;font-weight:500;color:var(--muted);letter-spacing:.08em;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.sec h2 output{font-family:var(--f-mono);color:var(--fg);letter-spacing:0;font-size:13px}
+
+input[type=range]{width:100%;accent-color:var(--accent);margin:0}
+.scale{display:flex;justify-content:space-between;font-family:var(--f-mono);font-size:10px;color:var(--muted);margin-top:-4px}
+.seg{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{font:500 13px/1 var(--f-body);background:var(--raise);color:var(--muted);border:0;border-left:1px solid var(--line);padding:9px 4px;cursor:pointer}
+.seg button:first-child{border-left:0}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--ink);font-weight:700}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.btn{font:500 13px/1 var(--f-body);color:var(--fg);background:var(--raise);border:1px solid var(--line);border-radius:7px;padding:9px 14px;cursor:pointer}
+.btn:hover{border-color:var(--steel)}
+.btn[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
+button:focus-visible,input:focus-visible+span,input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.note{margin:0;font-size:12px;color:var(--muted)}
+
+.map{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.colh{font-size:11px;color:var(--muted);text-align:center}
+.front{grid-column:1/-1;font-family:var(--f-mono);font-size:10px;letter-spacing:.14em;color:var(--muted);text-align:center;border-bottom:1px dashed var(--line);padding-bottom:4px}
+.cell{display:grid;grid-template-columns:auto minmax(0,1fr) 8px;align-items:center;gap:10px;background:var(--raise);border:1px solid var(--line);border-radius:6px;padding:7px 10px;transition:box-shadow .12s,border-color .12s}
+.cell .num{font-family:var(--f-display);font-size:26px;font-weight:600;line-height:1;width:1.1em;text-align:center}
+.cell .info{min-width:0;display:flex;flex-direction:column;gap:3px;align-items:flex-start}
+.pill{font-size:11px;font-weight:700;padding:1px 9px;border-radius:999px;color:var(--ink);line-height:1.6}
+.st-0{background:var(--power)}.st-1{background:var(--exhaust)}.st-2{background:var(--intake)}.st-3{background:var(--comp)}
+.cell .deg{font-family:var(--f-mono);font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.bar{height:38px;background:var(--bg);border-radius:3px;position:relative;overflow:hidden}
+.bar i{position:absolute;left:0;right:0;bottom:0;height:100%;background:var(--steel);transform-origin:bottom}
+.cell.fire{border-color:var(--power);box-shadow:0 0 16px -4px var(--power)}
+.cell.fire .num{color:var(--power)}
+
+.order{display:grid;grid-template-columns:repeat(8,1fr);gap:4px}
+.order span{font-family:var(--f-display);font-size:20px;font-weight:600;text-align:center;background:var(--raise);border:1px solid var(--line);border-radius:5px;line-height:1.6}
+.order span.on{background:var(--power);border-color:var(--power);color:var(--ink)}
+.order span.next{border-color:var(--comp);color:var(--comp)}
+#chart{width:100%;height:156px;display:block}
+
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{position:relative;cursor:pointer}
+.chip input{position:absolute;opacity:0;width:1px;height:1px}
+.chip span{display:block;font-size:13px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);color:var(--muted);background:var(--raise)}
+.chip input:checked+span{color:var(--fg);border-color:var(--steel)}
+.chip input:checked+span::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-right:7px;vertical-align:1px}
+
+dl.spec{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 16px;margin:0;font-size:13px}
+dl.spec dt{color:var(--muted)}
+dl.spec dd{margin:0;font-family:var(--f-mono);font-size:12.5px;font-variant-numeric:tabular-nums}
+
+@media (max-width:880px){
+  html,body{height:auto}
+  .app{grid-template-columns:minmax(0,1fr);height:auto}
+  .stage{height:62vh;min-height:340px;max-height:640px}
+  .panel{border-left:0;border-top:1px solid var(--line);overflow:visible;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+  .angle{font-size:44px}
+  .hint{display:none}
+  .views button{padding:6px 8px}
+}
+@media (prefers-reduced-motion:reduce){.cell{transition:none}}
+.back{display:inline-block;margin-bottom:10px;font-size:12px;color:var(--muted);text-decoration:none}.back:hover{color:var(--fg)}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="stage" id="stage">
+    <canvas id="gl" aria-label="V8エンジンの3Dビュー。ドラッグで視点を回転"></canvas>
+    <div class="hud hud-tl">
+      <div class="hud-label">CRANK ANGLE</div>
+      <div class="angle"><span id="hudAngle">0</span>°<small>/ 720</small></div>
+      <div class="hud-sub">1番シリンダー <b id="hudCyl1">圧縮</b> 行程</div>
+    </div>
+    <div class="views" role="group" aria-label="視点">
+      <button type="button" data-view="iso" aria-pressed="true">斜め</button>
+      <button type="button" data-view="front" aria-pressed="false">正面</button>
+      <button type="button" data-view="side" aria-pressed="false">側面</button>
+      <button type="button" data-view="top" aria-pressed="false">上面</button>
+    </div>
+    <div class="hud legend">
+      <span><i style="background:var(--intake)"></i>吸気</span>
+      <span><i style="background:var(--comp)"></i>圧縮</span>
+      <span><i style="background:var(--power)"></i>燃焼</span>
+      <span><i style="background:var(--exhaust)"></i>排気</span>
+    </div>
+    <div class="hud hint">ドラッグで回転 · 右ドラッグで移動 · ホイールでズーム</div>
+  </div>
+
+  <aside class="panel">
+    <header>
+      <a class="back" href="../index.html">← エンジン一覧</a>
+      <p class="eyebrow">GM LS3 · 6.2L · 90° CROSS-PLANE</p>
+      <h1><span class="v8">V8</span>エンジンシミュレーター</h1>
+      <p class="lede">クロスプレーンクランク、OHVの動弁系、8気筒の4行程を同じクランク角で同期させています。スロー再生で1気筒ずつ点火の流れを追えます。</p>
+    </header>
+
+    <div class="inst">
+      <canvas id="tach" aria-label="タコメーター"></canvas>
+      <div class="readouts">
+        <div class="ro"><div class="k">エンジン回転数</div><div class="v"><span id="roRpm">1200</span><small>r/min</small></div></div>
+        <div class="ro"><div class="k">画面上の回転</div><div class="v"><span id="roVis">24</span><small>r/min</small></div></div>
+        <div class="ro"><div class="k">点火周波数</div><div class="v"><span id="roHz">80</span><small>回/秒</small></div></div>
+      </div>
+    </div>
+
+    <section class="sec">
+      <h2><label for="rpm">エンジン回転数</label><output id="rpmOut" for="rpm">1,200 r/min</output></h2>
+      <input type="range" id="rpm" min="600" max="6600" step="50" value="1200">
+      <div class="scale"><span>600</span><span>アイドル 750</span><span>レッド 6,600</span></div>
+    </section>
+
+    <section class="sec">
+      <h2>再生速度</h2>
+      <div class="seg" role="group" aria-label="再生速度">
+        <button type="button" data-speed="0.005" aria-pressed="false">1/200</button>
+        <button type="button" data-speed="0.02" aria-pressed="true">1/50</button>
+        <button type="button" data-speed="0.1" aria-pressed="false">1/10</button>
+        <button type="button" data-speed="1" aria-pressed="false">実時間</button>
+      </div>
+      <div class="row">
+        <button type="button" class="btn" id="play" aria-pressed="false">一時停止</button>
+        <button type="button" class="btn" id="step">+15° 送る</button>
+        <button type="button" class="btn" id="sound" aria-pressed="false">サウンド オフ</button>
+      </div>
+      <p class="note" id="strobeNote" hidden>実時間ではフレームレートとの干渉で、クランクが止まったり逆回転に見えたりします。</p>
+    </section>
+
+    <section class="sec">
+      <h2>シリンダー配置と行程 <span>上から見た図</span></h2>
+      <div class="map" id="map">
+        <div class="front">▲ FRONT</div>
+        <div class="colh">左バンク(奇数)</div>
+        <div class="colh">右バンク(偶数)</div>
+      </div>
+    </section>
+
+    <section class="sec">
+      <h2>点火順序 <span>90° 間隔</span></h2>
+      <div class="order" id="order"></div>
+    </section>
+
+    <section class="sec">
+      <h2>行程タイミング図 <span>点火順・720°</span></h2>
+      <canvas id="chart" aria-label="8気筒の行程とバルブリフトのタイミング図"></canvas>
+      <p class="note">白線は吸気バルブ、灰線は排気バルブのリフト。▼は点火(上死点前20°)。</p>
+    </section>
+
+    <section class="sec">
+      <h2>表示</h2>
+      <div class="chips">
+        <label class="chip"><input type="checkbox" id="tgBlock" checked><span>ブロック</span></label>
+        <label class="chip"><input type="checkbox" id="tgHead" checked><span>ヘッド</span></label>
+        <label class="chip"><input type="checkbox" id="tgValve" checked><span>動弁系</span></label>
+        <label class="chip"><input type="checkbox" id="tgGas" checked><span>燃焼ガス</span></label>
+        <label class="chip"><input type="checkbox" id="tgLabel" checked><span>気筒番号</span></label>
+      </div>
+    </section>
+
+    <section class="sec">
+      <h2>諸元</h2>
+      <dl class="spec">
+        <dt>排気量</dt><dd>6,162 cc</dd>
+        <dt>ボア × ストローク</dt><dd>103.25 × 92.0 mm</dd>
+        <dt>コンロッド長</dt><dd>154.9 mm</dd>
+        <dt>ボアピッチ</dt><dd>111.8 mm</dd>
+        <dt>バンク角</dt><dd>90°</dd>
+        <dt>クランク</dt><dd>クロスプレーン (0/90/270/180°)</dd>
+        <dt>点火順序</dt><dd>1-8-7-2-6-5-4-3</dd>
+        <dt>動弁</dt><dd>OHV 2バルブ / ロッカー比 1.7</dd>
+        <dt>圧縮比</dt><dd>10.7 : 1</dd>
+      </dl>
+      <p class="note">寸法は GM LS3 の公表値に基づきます。バルブタイミングと動弁系の形状は説明用に簡略化しています。</p>
+    </section>
+  </aside>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+// V8エンジン(LS3)の運動学・動弁系・燃焼ガスを3Dで同期シミュレートし、計器パネルと合成エンジン音を更新する
+(() => {
+  const DEG = Math.PI / 180;
+  const $ = s => document.querySelector(s);
+  const mod = (a, n) => ((a % n) + n) % n;
+
+  // 寸法(1単位 = 10mm)
+  const R = 4.6, L = 15.494, BORE = 10.325, PITCH = 11.176, COMPH = 3.4, DECK = 23.5;
+  const CHAMBER = 0.95;                       // 燃焼室容積を高さ換算(圧縮比10.7)
+  const FIRING = [1, 8, 7, 2, 6, 5, 4, 3];
+  const LIFT = 1.41, RATIO = 1.7, DUR = 240, IN_C = 470, EX_C = 250;
+  const CAM_Y = 11.2, CAM_BASE = 1.6;
+  const STROKE_NAMES = ['燃焼', '排気', '吸気', '圧縮'];
+
+  const strokeOf = p => p < 180 ? 0 : p < 360 ? 1 : p < 540 ? 2 : 3;
+  const pistonDist = phi => { const a = phi * DEG, s = Math.sin(a); return R * Math.cos(a) + Math.sqrt(L * L - R * R * s * s); };
+  const liftAt = (p, c) => { const d = mod(p - c + 360, 720) - 360; return Math.abs(d) >= DUR / 2 ? 0 : LIFT * 0.5 * (1 + Math.cos(Math.PI * d / (DUR / 2))); };
+
+  // 気筒データ:奇数=左バンク(+X側,β=+45°)、偶数=右バンク(β=-45°)
+  const cyls = [];
+  for (let n = 1; n <= 8; n++) {
+    const odd = n % 2 === 1, pin = Math.floor((n - 1) / 2), zPin = (1.5 - pin) * PITCH;
+    cyls.push({ n, odd, beta: odd ? 45 : -45, s: odd ? -1 : 1, pin, zPin, z: zPin + (odd ? 1.15 : -1.15), fire: 90 * FIRING.indexOf(n), valves: [] });
+  }
+  const pinAlpha = [0, 1, 2, 3].map(p => mod(cyls[p * 2].beta - cyls[p * 2].fire, 360));
+
+  // 状態
+  let theta = 0, rpm = 1200, speed = 0.02, playing = true;
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduceMotion) speed = 0.005;
+
+  const stage = $('#stage'), canvas = $('#gl');
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  } catch (e) {
+    const d = document.createElement('div'); d.className = 'gl-error';
+    d.textContent = 'このブラウザでは WebGL を使えないため 3D 表示を開始できません。計器パネルのみ動作します。';
+    stage.appendChild(d);
+  }
+
+  const col = h => new THREE.Color(h).convertSRGBToLinear();
+  let scene, camera, controls, crank, cam, pointLight;
+  const groups = { block: [], head: [], valve: [], gas: [], label: [] };
+
+  if (renderer) build3D();
+
+  function build3D() {
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(34, 1, 0.5, 800);
+    camera.position.set(58, 36, 64);
+    controls = new THREE.OrbitControls(camera, canvas);
+    controls.target.set(0, 9, 0);
+    controls.enableDamping = true;
+    controls.minDistance = 26; controls.maxDistance = 220;
+    controls.addEventListener('start', () => { tween = null; });
+    controls.update();
+
+    // 簡易スタジオ環境マップ
+    const pm = new THREE.PMREMGenerator(renderer), es = new THREE.Scene();
+    const sg = new THREE.SphereGeometry(60, 32, 16), cs = [];
+    for (let i = 0; i < sg.attributes.position.count; i++) {
+      const t = (sg.attributes.position.getY(i) / 60 + 1) / 2, k = 0.04 + 0.6 * Math.pow(t, 2);
+      cs.push(k * 0.92, k * 0.96, k);
+    }
+    sg.setAttribute('color', new THREE.Float32BufferAttribute(cs, 3));
+    es.add(new THREE.Mesh(sg, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
+    [[50, 22, 0, 50, 15, 3.2], [24, 36, -52, 12, 22, 1.4], [24, 36, 52, 18, -26, 1.1]].forEach(([w, h, x, y, z, k]) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(k, k, k * 1.04), side: THREE.DoubleSide }));
+      m.position.set(x, y, z); m.lookAt(0, 0, 0); es.add(m);
+    });
+    scene.environment = pm.fromScene(es, 0.04).texture;
+
+    scene.add(new THREE.HemisphereLight(0xc9d6e6, 0x1c1814, 0.5));
+    const key = new THREE.DirectionalLight(0xfff2e2, 1.5); key.position.set(40, 70, 50); scene.add(key);
+    const rim = new THREE.DirectionalLight(0x8fb4ff, 0.8); rim.position.set(-50, 30, -60); scene.add(rim);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.3); fill.position.set(-40, -10, 40); scene.add(fill);
+    pointLight = new THREE.PointLight(0xffa452, 0, 34); scene.add(pointLight);
+
+    const std = (h, m, r) => new THREE.MeshStandardMaterial({ color: col(h), metalness: m, roughness: r });
+    const M = {
+      crank: std('#8a929c', 0.9, 0.34), journal: std('#d8dde3', 1, 0.14), alu: std('#c4c8cd', 0.6, 0.4),
+      ring: std('#3a3f46', 0.8, 0.4), rod: std('#9aa2ac', 0.85, 0.27), dark: std('#3f454d', 0.6, 0.55),
+      cam: std('#7f878f', 0.9, 0.28), valve: std('#c2c6cb', 0.9, 0.22), spring: std('#5d6672', 0.8, 0.38),
+      push: std('#d3d7dc', 0.95, 0.2), rocker: std('#a9b0b8', 0.85, 0.3), chain: std('#4a5059', 0.8, 0.45),
+      mark: new THREE.MeshBasicMaterial({ color: col('#f4f1e8') })
+    };
+    const ghost = (h, o) => new THREE.MeshStandardMaterial({ color: col(h), metalness: 0.2, roughness: 0.6, transparent: true, opacity: o, depthWrite: false, side: THREE.DoubleSide });
+    const edgeMat = new THREE.LineBasicMaterial({ color: col('#9fb2c6'), transparent: true, opacity: 0.3 });
+    const withEdges = (geo, mat, list) => {
+      const g = new THREE.Group(); g.add(new THREE.Mesh(geo, mat)); g.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), edgeMat));
+      list.push(g); return g;
+    };
+    const at = (m, x, y, z) => { m.position.set(x, y, z); return m; };
+    const cylZ = (r, len, mat, z, x = 0, y = 0, seg = 32) => {
+      const g = new THREE.CylinderGeometry(r, r, len, seg); g.rotateX(Math.PI / 2);
+      const m = new THREE.Mesh(g, mat); m.position.set(x, y, z); return m;
+    };
+    const gearGeo = (r, teeth, th, depth) => {
+      const s = new THREE.Shape(), st = Math.PI * 2 / teeth;
+      for (let i = 0; i < teeth; i++) {
+        const a = i * st;
+        [[a, r], [a + st * 0.18, r + th], [a + st * 0.5, r + th], [a + st * 0.68, r]].forEach(([q, rr], j) => {
+          const x = rr * Math.cos(q), y = rr * Math.sin(q);
+          (i === 0 && j === 0) ? s.moveTo(x, y) : s.lineTo(x, y);
+        });
+      }
+      s.closePath();
+      const g = new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: false, curveSegments: 4 }); g.translate(0, 0, -depth / 2); return g;
+    };
+
+    // クランクシャフト
+    crank = new THREE.Group(); scene.add(crank);
+    const webShape = new THREE.Shape(), cw = 7.4, a0 = 0.42;
+    webShape.moveTo(-3.3, 0); webShape.lineTo(-3.3, R); webShape.absarc(0, R, 3.3, Math.PI, 0, true); webShape.lineTo(3.3, 0);
+    webShape.lineTo(cw * Math.cos(-a0), cw * Math.sin(-a0)); webShape.absarc(0, 0, cw, -a0, -Math.PI + a0, true); webShape.lineTo(-3.3, 0);
+    const webGeo = new THREE.ExtrudeGeometry(webShape, { depth: 1.8, bevelEnabled: true, bevelThickness: 0.22, bevelSize: 0.22, bevelSegments: 2, curveSegments: 28 });
+    webGeo.translate(0, 0, -0.9);
+    for (let p = 0; p < 4; p++) {
+      const zp = (1.5 - p) * PITCH, a = pinAlpha[p] * DEG;
+      crank.add(cylZ(2.67, 4.9, M.journal, zp, R * Math.sin(a), R * Math.cos(a)));
+      [1, -1].forEach(sg => { const w = new THREE.Mesh(webGeo, M.crank); w.position.z = zp + sg * 3.45; w.rotation.z = -a; crank.add(w); });
+    }
+    for (let m = 0; m < 3; m++) crank.add(cylZ(3.25, 3.2, M.journal, (1 - m) * PITCH));
+    crank.add(cylZ(3.25, 2.8, M.journal, 1.5 * PITCH + 5.9));
+    crank.add(cylZ(3.25, 2.8, M.journal, -1.5 * PITCH - 5.9));
+    crank.add(cylZ(2.0, 7, M.crank, 27.5));
+    crank.add(at(new THREE.Mesh(gearGeo(2.4, 18, 0.35, 0.9), M.chain), 0, 0, 25.5));
+    const damper = cylZ(7, 2.6, M.dark, 29.2, 0, 0, 64); crank.add(damper);
+    for (let i = 0; i < 3; i++) { const t = new THREE.Mesh(new THREE.TorusGeometry(7.02, 0.12, 6, 64), M.crank); t.position.z = 28.3 + i * 0.9; crank.add(t); }
+    crank.add(cylZ(4.6, 2.7, M.crank, 29.25, 0, 0, 48));
+    const mark = new THREE.Mesh(new THREE.BoxGeometry(0.28, 1.8, 0.1), M.mark); mark.position.set(0, 6.0, 30.56); crank.add(mark);
+    crank.add(cylZ(4.2, 2.4, M.crank, -24.6));
+    crank.add(cylZ(12.8, 1.2, M.dark, -26.2, 0, 0, 72));
+    crank.add(at(new THREE.Mesh(gearGeo(13.0, 120, 0.55, 1.2), M.crank), 0, 0, -26.2));
+    const ptr = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.4, 3), M.mark); ptr.rotation.z = Math.PI; ptr.position.set(0, 7.9, 30.6); scene.add(ptr);
+
+    // カムシャフト(バレー内、クランクの1/2回転)
+    cam = new THREE.Group(); cam.position.y = CAM_Y; scene.add(cam); groups.valve.push(cam);
+    cam.add(cylZ(1.35, 50, M.cam, 0.5, 0, 0, 24));
+    cam.add(at(new THREE.Mesh(gearGeo(4.4, 36, 0.35, 0.9), M.chain), 0, 0, 25.5));
+    const lobeShape = new THREE.Shape();
+    for (let a = 0; a <= 360; a += 3) {
+      const w = mod(a + 180, 360) - 180, rr = CAM_BASE + (LIFT / RATIO) * (Math.abs(w) < 60 ? 0.5 * (1 + Math.cos(Math.PI * w / 60)) : 0);
+      const x = rr * Math.sin(a * DEG), y = rr * Math.cos(a * DEG);
+      a === 0 ? lobeShape.moveTo(x, y) : lobeShape.lineTo(x, y);
+    }
+    const lobeGeo = new THREE.ExtrudeGeometry(lobeShape, { depth: 1.5, bevelEnabled: false }); lobeGeo.translate(0, 0, -0.75);
+
+    // タイミングチェーン
+    const r1 = 2.7, r2 = 4.7, ps = Math.acos((r1 - r2) / CAM_Y) / DEG, pts = [];
+    for (let q = -ps; q <= ps; q += 6) pts.push(new THREE.Vector3(r2 * Math.sin(q * DEG), CAM_Y + r2 * Math.cos(q * DEG), 25.5));
+    for (let q = ps; q <= 360 - ps; q += 8) pts.push(new THREE.Vector3(r1 * Math.sin(q * DEG), r1 * Math.cos(q * DEG), 25.5));
+    const chain = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, true), 160, 0.26, 6, true), M.chain);
+    scene.add(chain); groups.valve.push(chain);
+
+    // ブロック、オイルパン(半透明)
+    const blk = new THREE.Shape();
+    [[21.2, 12], [12, 21.2], [4.6, 15.6], [-4.6, 15.6], [-12, 21.2], [-21.2, 12], [-13.6, 4.4], [-13.6, -9], [13.6, -9], [13.6, 4.4]]
+      .forEach(([x, y], i) => i ? blk.lineTo(x, y) : blk.moveTo(x, y));
+    blk.closePath();
+    const blkGeo = new THREE.ExtrudeGeometry(blk, { depth: 48.8, bevelEnabled: false }); blkGeo.translate(0, 0, -24.4);
+    scene.add(withEdges(blkGeo, ghost('#8796a8', 0.09), groups.block));
+    const pan = new THREE.Shape();
+    [[-12.8, -9], [12.8, -9], [10, -18], [-10, -18]].forEach(([x, y], i) => i ? pan.lineTo(x, y) : pan.moveTo(x, y)); pan.closePath();
+    const panGeo = new THREE.ExtrudeGeometry(pan, { depth: 44, bevelEnabled: false }); panGeo.translate(0, 0, -22.4);
+    scene.add(withEdges(panGeo, ghost('#6d7888', 0.07), groups.block));
+
+    // ヘッドとバルブカバー(バンクごと)
+    [45, -45].forEach(beta => {
+      const g = new THREE.Group(); g.rotation.z = -beta * DEG; g.position.z = beta > 0 ? 1.15 : -1.15; scene.add(g);
+      const s = beta > 0 ? -1 : 1;
+      const h = withEdges(new THREE.BoxGeometry(14, 4, 46.6), ghost('#93a3b6', 0.1), groups.head); h.position.y = 25.5; g.add(h);
+      const vc = withEdges(new THREE.BoxGeometry(11, 5, 44), ghost('#93a3b6', 0.06), groups.head); vc.position.set(s * 0.8, 30, 0); g.add(vc);
+    });
+
+    // 部品用ジオメトリ
+    const rodShape = new THREE.Shape(); rodShape.moveTo(-1.6, 2.4); rodShape.lineTo(-0.95, L - 1.3); rodShape.lineTo(0.95, L - 1.3); rodShape.lineTo(1.6, 2.4); rodShape.closePath();
+    const beamGeo = new THREE.ExtrudeGeometry(rodShape, { depth: 1.3, bevelEnabled: true, bevelThickness: 0.2, bevelSize: 0.2, bevelSegments: 1 }); beamGeo.translate(0, 0, -0.65);
+    const helixPts = []; for (let i = 0; i <= 240; i++) { const t = i / 240, a = t * Math.PI * 2 * 6; helixPts.push(new THREE.Vector3(0.95 * Math.cos(a), t, 0.95 * Math.sin(a))); }
+    const springGeo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(helixPts), 240, 0.11, 5, false);
+    const segCyl = (r, seg) => new THREE.CylinderGeometry(r, r, 1, seg);
+    const lifterGeo = segCyl(0.55, 16), pushGeo = segCyl(0.2, 8), rockerGeo = new THREE.BoxGeometry(0.95, 1, 0.95);
+    const gasGeo = new THREE.CylinderGeometry(BORE / 2 - 0.15, BORE / 2 - 0.15, 1, 36);
+    const linerGeo = new THREE.CylinderGeometry(BORE / 2, BORE / 2, DECK - 8, 40, 1, true);
+    const linerRing = new THREE.TorusGeometry(BORE / 2, 0.07, 6, 48); linerRing.rotateX(Math.PI / 2);
+    const linerMat = ghost('#b6c4d4', 0.11), ringMat = new THREE.MeshBasicMaterial({ color: col('#7f8fa2'), transparent: true, opacity: 0.6 });
+    const glowTex = (() => {
+      const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
+      const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,250,235,1)'); g.addColorStop(0.25, 'rgba(255,190,90,.9)'); g.addColorStop(1, 'rgba(255,120,30,0)');
+      x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c);
+    })();
+
+    cyls.forEach(c => {
+      const f = new THREE.Group(); f.rotation.z = -c.beta * DEG; f.position.z = c.z; scene.add(f); c.frame = f;
+
+      // ピストン
+      const pg = new THREE.Group();
+      const crownMat = M.alu.clone(); c.crownMat = crownMat;
+      const head = new THREE.Mesh(new THREE.CylinderGeometry(BORE / 2 - 0.06, BORE / 2 - 0.06, 2.4, 40), crownMat); head.position.y = COMPH - 1.2; pg.add(head);
+      const sk = new THREE.Mesh(new THREE.CylinderGeometry(BORE / 2 - 0.1, BORE / 2 - 0.25, 3.6, 40, 1, true), M.alu); sk.material = M.alu.clone(); sk.material.side = THREE.DoubleSide; sk.position.y = -0.8; pg.add(sk);
+      [3.0, 2.55, 2.1].forEach(y => { const r = new THREE.Mesh(new THREE.CylinderGeometry(BORE / 2 - 0.02, BORE / 2 - 0.02, 0.14, 40, 1, true), M.ring); r.position.y = y; pg.add(r); });
+      pg.add(cylZ(1.05, 7.2, M.journal, 0, 0, 0, 20));
+      f.add(pg); c.piston = pg;
+
+      // ライナー
+      const ln = new THREE.Mesh(linerGeo, linerMat); ln.position.y = (DECK + 8) / 2; f.add(ln); groups.block.push(ln);
+      [8, DECK].forEach(y => { const r = new THREE.Mesh(linerRing, ringMat); r.position.y = y; f.add(r); groups.block.push(r); });
+
+      // 燃焼ガス
+      const gas = new THREE.Mesh(gasGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3, depthWrite: false }));
+      f.add(gas); c.gas = gas; groups.gas.push(gas);
+
+      // 点火スパーク
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
+      sp.position.y = DECK + 0.7; sp.scale.set(2.2, 2.2, 1); f.add(sp); c.spark = sp;
+
+      // コンロッド
+      const rod = new THREE.Group();
+      rod.add(cylZ(3.4, 1.9, M.rod, 0, 0, 0, 36)); rod.add(new THREE.Mesh(beamGeo, M.rod)); rod.add(cylZ(1.75, 1.7, M.rod, 0, 0, L, 24));
+      scene.add(rod); c.rod = rod;
+
+      // 動弁系(吸気・排気)
+      [{ type: 'in', center: IN_C, zoff: -2.3, rHead: 2.5 }, { type: 'ex', center: EX_C, zoff: 2.3, rHead: 1.9 }].forEach(v => {
+        const vg = new THREE.Group();
+        const vh = new THREE.Mesh(new THREE.CylinderGeometry(v.rHead * 0.45, v.rHead, 0.4, 32), M.valve); vh.position.y = 0.2; vg.add(vh);
+        const st = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 6.7, 12), M.valve); st.position.y = 3.75; vg.add(st);
+        const rt = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 0.7, 0.35, 20), M.valve); rt.position.y = 6.5; vg.add(rt);
+        vg.position.z = v.zoff; f.add(vg);
+        const spg = new THREE.Mesh(springGeo, M.spring); spg.position.set(0, 27.5, v.zoff); f.add(spg);
+        const piv = cylZ(0.45, 1.4, M.dark, v.zoff, c.s * 1.75, 31.1, 12); f.add(piv);
+        groups.valve.push(vg, spg, piv);
+
+        const toW = (x, y, z) => { const b = c.beta * DEG; return new THREE.Vector3(x * Math.cos(b) + y * Math.sin(b), -x * Math.sin(b) + y * Math.cos(b), z); };
+        const zw = c.z + v.zoff, B = toW(c.s * 3.5, 30.3, zw), T = toW(0, 31.0, zw);
+        const delta = Math.atan2(B.x, B.y - CAM_Y) / DEG;
+        const u = new THREE.Vector3(Math.sin(delta * DEG), Math.cos(delta * DEG), 0);
+        const A = new THREE.Vector3(0, CAM_Y, zw).addScaledVector(u, CAM_BASE);
+        const axis = new THREE.Vector3(Math.sin(c.beta * DEG), Math.cos(c.beta * DEG), 0);
+        const lobe = new THREE.Mesh(lobeGeo, M.cam); lobe.position.z = zw; lobe.rotation.z = -(delta - (c.fire + v.center) / 2) * DEG; cam.add(lobe);
+        const lifter = new THREE.Mesh(lifterGeo, M.journal), push = new THREE.Mesh(pushGeo, M.push), rocker = new THREE.Mesh(rockerGeo, M.rocker);
+        scene.add(lifter, push, rocker); groups.valve.push(lifter, push, rocker);
+        c.valves.push({ ...v, mesh: vg, spring: spg, A, B, T, u, axis, lifter, push, rocker });
+      });
+    });
+
+    // 気筒番号ラベル
+    groups.labelMake = () => {
+      cyls.forEach(c => {
+        const cv = document.createElement('canvas'); cv.width = cv.height = 128; const x = cv.getContext('2d');
+        x.fillStyle = 'rgba(15,18,22,.82)'; x.beginPath(); x.arc(64, 64, 56, 0, Math.PI * 2); x.fill();
+        x.lineWidth = 4; x.strokeStyle = '#f2a33a'; x.stroke();
+        x.fillStyle = '#e3e7ec'; x.font = '600 76px "Saira Condensed", "Arial Narrow", sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(String(c.n), 64, 70);
+        const tex = new THREE.CanvasTexture(cv); tex.encoding = THREE.sRGBEncoding;
+        if (c.label) { c.label.material.map = tex; c.label.material.needsUpdate = true; return; }
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false }));
+        sp.position.y = 35.5; sp.scale.set(3, 3, 1); c.frame.add(sp); c.label = sp; groups.label.push(sp);
+      });
+    };
+    groups.labelMake();
+
+    const grid = new THREE.GridHelper(200, 40, 0x2c3540, 0x1d242c); grid.position.y = -19; scene.add(grid);
+  }
+
+  // 燃焼ガスの色と不透明度
+  const GC = renderer ? { white: col('#fff1c4'), orange: col('#ff7b2e'), red: col('#9c2f16'), smoke: col('#6c707a'), blue: col('#4f9cf0'), amber: col('#f2c14e') } : null;
+  function gasLook(p, out) {
+    if (p < 180) { const t = p / 180; t < 0.25 ? out.copy(GC.white).lerp(GC.orange, t / 0.25) : out.copy(GC.orange).lerp(GC.red, (t - 0.25) / 0.75); return 0.2 + 0.72 * Math.pow(1 - t, 1.2); }
+    if (p < 360) { const t = (p - 180) / 180; out.copy(GC.red).lerp(GC.smoke, Math.min(1, t * 3)); return 0.32 - 0.14 * t; }
+    if (p < 540) { const t = (p - 360) / 180; out.copy(GC.smoke).lerp(GC.blue, Math.min(1, t * 4)); return 0.18 + 0.06 * t; }
+    const t = (p - 540) / 180; out.copy(GC.blue).lerp(GC.amber, t * t); return 0.24 + 0.36 * t;
+  }
+
+  const _up = new THREE.Vector3(0, 1, 0), _v = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3();
+  function setSeg(m, a, b) {
+    _v.subVectors(b, a); const len = _v.length();
+    m.position.copy(a).addScaledVector(_v, 0.5); m.quaternion.setFromUnitVectors(_up, _v.divideScalar(len)); m.scale.set(1, len, 1);
+  }
+
+  function update3D(th) {
+    crank.rotation.z = -th * DEG;
+    cam.rotation.z = -th * DEG / 2;
+    let best = 0, bestC = null;
+    cyls.forEach(c => {
+      const phi = th - c.fire, d = pistonDist(phi), p = mod(phi, 720);
+      c.piston.position.y = d;
+      const g = (th + pinAlpha[c.pin]) * DEG, px = R * Math.sin(g), py = R * Math.cos(g);
+      const qx = d * Math.sin(c.beta * DEG), qy = d * Math.cos(c.beta * DEG);
+      c.rod.position.set(px, py, c.z); c.rod.rotation.z = -Math.atan2(qx - px, qy - py);
+
+      const crown = d + COMPH, top = DECK + CHAMBER, h = top - crown;
+      c.gas.position.y = crown + h / 2; c.gas.scale.y = Math.max(0.02, h);
+      c.gas.material.opacity = gasLook(p, c.gas.material.color);
+
+      const glow = p < 120 ? Math.exp(-p / 32) : 0;
+      c.crownMat.emissive.setRGB(1, 0.42, 0.12); c.crownMat.emissiveIntensity = glow * 1.4;
+      const sp = p >= 702 ? 1 : p < 6 ? 1 - p / 6 : 0;
+      c.spark.material.opacity = sp; const sc = 1.8 + Math.random() * 0.8; c.spark.scale.set(sc, sc, 1);
+      if (glow > best) { best = glow; bestC = c; }
+
+      c.valves.forEach(v => {
+        const l = liftAt(p, v.center), push = l / RATIO;
+        v.mesh.position.y = DECK + 0.4 - l;
+        v.spring.scale.y = 2.73 - l;
+        _a.copy(v.A).addScaledVector(v.u, push); _b.copy(v.A).addScaledVector(v.u, 2.2 + push);
+        setSeg(v.lifter, _a, _b);
+        _c.copy(v.B).addScaledVector(v.u, push); setSeg(v.push, _b, _c);
+        _a.copy(v.T).addScaledVector(v.axis, -l); setSeg(v.rocker, _c, _a);
+      });
+    });
+    if (bestC) {
+      const b = bestC.beta * DEG; pointLight.position.set((DECK - 2) * Math.sin(b), (DECK - 2) * Math.cos(b), bestC.z);
+      pointLight.intensity = 3.2 * best;
+    } else pointLight.intensity = 0;
+  }
+
+  // 視点プリセット
+  const VIEWS = { iso: [[58, 36, 64], [0, 9, 0]], front: [[0, 14, 96], [0, 9, 0]], side: [[98, 14, 0], [0, 9, 0]], top: [[0, 108, -8], [0, 8, 0]] };
+  let tween = null;
+  document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-view]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    if (!camera) return;
+    const [pos, tgt] = VIEWS[b.dataset.view];
+    tween = { fp: camera.position.clone(), tp: new THREE.Vector3(...pos), ft: controls.target.clone(), tt: new THREE.Vector3(...tgt), t: reduceMotion ? 1 : 0 };
+  }));
+
+  // 表示切り替え
+  const bindToggle = (id, list) => $(id).addEventListener('change', e => groups[list].forEach(o => { o.visible = e.target.checked; }));
+  bindToggle('#tgBlock', 'block'); bindToggle('#tgHead', 'head'); bindToggle('#tgValve', 'valve'); bindToggle('#tgGas', 'gas'); bindToggle('#tgLabel', 'label');
+
+  // パネル:シリンダーマップ
+  const map = $('#map'), cells = {};
+  [[1, 2], [3, 4], [5, 6], [7, 8]].flat().forEach(n => {
+    const el = document.createElement('div'); el.className = 'cell';
+    el.innerHTML = `<span class="num">${n}</span><span class="info"><span class="pill st-3">圧縮</span><span class="deg">0°</span></span><span class="bar"><i></i></span>`;
+    map.appendChild(el);
+    cells[n] = { el, pill: el.querySelector('.pill'), deg: el.querySelector('.deg'), bar: el.querySelector('.bar i'), st: -1, fire: false };
+  });
+  const orderEl = $('#order'), orderChips = FIRING.map(n => { const s = document.createElement('span'); s.textContent = n; orderEl.appendChild(s); return s; });
+
+  // タイミング図
+  const chart = $('#chart'), chartOff = document.createElement('canvas');
+  const css = getComputedStyle(document.documentElement), tok = n => css.getPropertyValue(n).trim();
+  const SC = [tok('--power'), tok('--exhaust'), tok('--intake'), tok('--comp')];
+  function fitCanvas(cv) {
+    const r = cv.getBoundingClientRect(), d = Math.min(devicePixelRatio || 1, 2);
+    const w = Math.max(1, Math.round(r.width * d)), h = Math.max(1, Math.round(r.height * d));
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    return { w: r.width, h: r.height, d };
+  }
+  let chartGeom = null;
+  function buildChart() {
+    const { w, h, d } = fitCanvas(chart);
+    chartOff.width = chart.width; chartOff.height = chart.height;
+    const x = chartOff.getContext('2d'); x.setTransform(d, 0, 0, d, 0, 0); x.clearRect(0, 0, w, h);
+    const x0 = 28, x1 = w - 4, rowH = 16, y0 = 2, plotW = x1 - x0;
+    chartGeom = { x0, x1, plotW, y0, rowH, h };
+    x.font = '500 10px "IBM Plex Mono", monospace'; x.textBaseline = 'middle';
+    FIRING.forEach((n, i) => {
+      const c = cyls[n - 1], y = y0 + i * rowH;
+      x.fillStyle = tok('--muted'); x.textAlign = 'right'; x.fillText('#' + n, x0 - 5, y + rowH / 2 - 1);
+      for (let px = 0; px < plotW; px++) {
+        const th = px / plotW * 720; x.fillStyle = SC[strokeOf(mod(th - c.fire, 720))];
+        x.globalAlpha = 0.78; x.fillRect(x0 + px, y, 1.2, rowH - 3);
+      }
+      x.globalAlpha = 1;
+      [[IN_C, 'rgba(255,255,255,.9)'], [EX_C, 'rgba(20,24,30,.75)']].forEach(([cc, stc]) => {
+        x.beginPath(); x.strokeStyle = stc; x.lineWidth = 1.2;
+        for (let px = 0; px <= plotW; px++) {
+          const l = liftAt(mod(px / plotW * 720 - c.fire, 720), cc) / LIFT, yy = y + rowH - 4 - l * (rowH - 6);
+          px ? x.lineTo(x0 + px, yy) : x.moveTo(x0 + px, yy);
+        }
+        x.stroke();
+      });
+      const sx = x0 + mod(c.fire - 20, 720) / 720 * plotW;
+      x.fillStyle = tok('--fg'); x.beginPath(); x.moveTo(sx - 3.5, y - 1); x.lineTo(sx + 3.5, y - 1); x.lineTo(sx, y + 4); x.closePath(); x.fill();
+    });
+    const yb = y0 + 8 * rowH;
+    x.strokeStyle = tok('--line'); x.lineWidth = 1;
+    for (let a = 0; a <= 720; a += 90) { const xx = x0 + a / 720 * plotW; x.beginPath(); x.moveTo(xx + 0.5, yb - 2); x.lineTo(xx + 0.5, yb + 3); x.stroke(); }
+    x.fillStyle = tok('--muted'); x.textAlign = 'center';
+    [0, 180, 360, 540, 720].forEach((a, i) => { x.textAlign = i === 0 ? 'left' : i === 4 ? 'right' : 'center'; x.fillText(a + '°', x0 + a / 720 * plotW, yb + 11); });
+  }
+  function drawChart(th) {
+    if (!chartGeom) return;
+    const x = chart.getContext('2d'), d = chart.width / chart.getBoundingClientRect().width || 1;
+    x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, chart.width, chart.height); x.drawImage(chartOff, 0, 0);
+    x.setTransform(d, 0, 0, d, 0, 0);
+    const { x0, plotW, y0, rowH } = chartGeom, cx = x0 + mod(th, 720) / 720 * plotW;
+    x.strokeStyle = tok('--accent'); x.lineWidth = 2; x.beginPath(); x.moveTo(cx, y0 - 2); x.lineTo(cx, y0 + 8 * rowH); x.stroke();
+  }
+
+  // タコメーター
+  const tach = $('#tach');
+  let needle = rpm;
+  function drawTach() {
+    const { w, h, d } = fitCanvas(tach), x = tach.getContext('2d');
+    x.setTransform(d, 0, 0, d, 0, 0); x.clearRect(0, 0, w, h);
+    const cx = w / 2, cy = h / 2, rad = Math.min(w, h) / 2 - 6, ang = v => (135 + 270 * v / 7000) * DEG;
+    x.lineCap = 'round';
+    x.strokeStyle = tok('--line'); x.lineWidth = 6; x.beginPath(); x.arc(cx, cy, rad - 3, ang(0), ang(7000)); x.stroke();
+    x.strokeStyle = tok('--redline'); x.beginPath(); x.arc(cx, cy, rad - 3, ang(6600), ang(7000)); x.stroke();
+    for (let v = 0; v <= 7000; v += 250) {
+      const a = ang(v), major = v % 1000 === 0, r0 = rad - (major ? 16 : 11), r1 = rad - 8;
+      x.strokeStyle = v >= 6600 ? tok('--redline') : tok(major ? '--fg' : '--muted'); x.lineWidth = major ? 2 : 1;
+      x.beginPath(); x.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0); x.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1); x.stroke();
+      if (major) {
+        x.fillStyle = v >= 7000 ? tok('--redline') : tok('--fg'); x.font = '600 15px "Saira Condensed", sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+        x.fillText(v / 1000, cx + Math.cos(a) * (rad - 28), cy + Math.sin(a) * (rad - 28));
+      }
+    }
+    x.fillStyle = tok('--muted'); x.font = '400 10px "IBM Plex Mono", monospace'; x.fillText('×1000 r/min', cx, cy + rad * 0.5);
+    needle += (rpm - needle) * 0.15;
+    const a = ang(needle);
+    x.strokeStyle = tok('--accent'); x.lineWidth = 3; x.shadowColor = tok('--accent'); x.shadowBlur = 8;
+    x.beginPath(); x.moveTo(cx - Math.cos(a) * 10, cy - Math.sin(a) * 10); x.lineTo(cx + Math.cos(a) * (rad - 14), cy + Math.sin(a) * (rad - 14)); x.stroke();
+    x.shadowBlur = 0; x.fillStyle = tok('--raise'); x.strokeStyle = tok('--line'); x.lineWidth = 2; x.beginPath(); x.arc(cx, cy, 8, 0, Math.PI * 2); x.fill(); x.stroke();
+  }
+
+  // パネル数値
+  const fmt = n => Math.round(n).toLocaleString('ja-JP');
+  const hudAngle = $('#hudAngle'), hudCyl1 = $('#hudCyl1');
+  function updatePanel(th) {
+    hudAngle.textContent = Math.floor(mod(th, 720));
+    hudCyl1.textContent = STROKE_NAMES[strokeOf(mod(th - cyls[0].fire, 720))];
+    let lead = null, leadP = 999;
+    cyls.forEach(c => {
+      const p = mod(th - c.fire, 720), st = strokeOf(p), cell = cells[c.n];
+      if (st !== cell.st) { cell.st = st; cell.pill.className = 'pill st-' + st; cell.pill.textContent = STROKE_NAMES[st]; }
+      cell.deg.textContent = Math.floor(p) + '°';
+      const pos = (pistonDist(th - c.fire) - (L - R)) / (2 * R);
+      cell.bar.style.transform = `scaleY(${Math.max(0.04, pos).toFixed(3)})`;
+      const fire = p < 90;
+      if (fire !== cell.fire) { cell.fire = fire; cell.el.classList.toggle('fire', fire); }
+      if (p < leadP) { leadP = p; lead = c.n; }
+    });
+    const i = FIRING.indexOf(lead);
+    orderChips.forEach((s, k) => { s.classList.toggle('on', k === i); s.classList.toggle('next', k === (i + 1) % 8); });
+  }
+  function updateReadouts() {
+    $('#roRpm').textContent = fmt(rpm);
+    $('#roVis').textContent = rpm * speed < 10 ? (rpm * speed).toFixed(1) : fmt(rpm * speed);
+    $('#roHz').textContent = fmt(rpm / 60 * 4);
+    $('#rpmOut').textContent = fmt(rpm) + ' r/min';
+    $('#strobeNote').hidden = speed < 1;
+  }
+
+  // 操作
+  const rpmIn = $('#rpm');
+  rpmIn.addEventListener('input', () => { rpm = +rpmIn.value; updateReadouts(); });
+  document.querySelectorAll('[data-speed]').forEach(b => {
+    b.setAttribute('aria-pressed', String(+b.dataset.speed === speed));
+    b.addEventListener('click', () => {
+      speed = +b.dataset.speed;
+      document.querySelectorAll('[data-speed]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+      updateReadouts();
+    });
+  });
+  const playBtn = $('#play');
+  const setPlaying = v => { playing = v; playBtn.textContent = v ? '一時停止' : '再生'; playBtn.setAttribute('aria-pressed', String(!v)); };
+  playBtn.addEventListener('click', () => setPlaying(!playing));
+  $('#step').addEventListener('click', () => { setPlaying(false); theta += 15; });
+  addEventListener('keydown', e => {
+    if (e.target.closest && e.target.closest('input,button,textarea')) return;
+    if (e.code === 'Space') { e.preventDefault(); setPlaying(!playing); }
+    if (e.code === 'ArrowRight') { setPlaying(false); theta += 15; }
+  });
+
+  // 合成エンジン音:各点火イベントで短い爆発音を左右バンクに振り分けて鳴らす
+  let actx = null, audioOn = false, bangBuf = null, lp = null, panL = null, panR = null, master = null;
+  function initAudio() {
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return false;
+    actx = new AC();
+    const sr = actx.sampleRate, len = Math.floor(sr * 0.12);
+    bangBuf = actx.createBuffer(1, len, sr); const ch = bangBuf.getChannelData(0); let ph = 0;
+    for (let i = 0; i < len; i++) {
+      const t = i / sr, f = 52 + 48 * Math.exp(-t * 40); ph += 2 * Math.PI * f / sr;
+      ch[i] = Math.exp(-t * 34) * (0.85 * Math.sin(ph) + 0.3 * Math.sin(ph * 2.03)) + (Math.random() * 2 - 1) * 0.45 * Math.exp(-t * 80);
+    }
+    master = actx.createGain(); master.gain.value = 0.6;
+    const comp = actx.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 6;
+    lp = actx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.8;
+    panL = actx.createStereoPanner ? actx.createStereoPanner() : actx.createGain(); panR = actx.createStereoPanner ? actx.createStereoPanner() : actx.createGain();
+    if (panL.pan) { panL.pan.value = -0.55; panR.pan.value = 0.55; }
+    panL.connect(lp); panR.connect(lp); lp.connect(comp); comp.connect(master); master.connect(actx.destination);
+    return true;
+  }
+  const soundBtn = $('#sound');
+  soundBtn.addEventListener('click', () => {
+    if (!actx && !initAudio()) { soundBtn.textContent = 'サウンド非対応'; soundBtn.disabled = true; return; }
+    audioOn = !audioOn; if (audioOn) actx.resume();
+    soundBtn.textContent = audioOn ? 'サウンド オン' : 'サウンド オフ'; soundBtn.setAttribute('aria-pressed', String(audioOn));
+  });
+  function scheduleSound(t0, t1, dt) {
+    if (!audioOn || !actx || t1 <= t0) return;
+    lp.frequency.setTargetAtTime(260 + rpm * 0.32, actx.currentTime, 0.05);
+    const rate = rpm * speed / 15, gain = 0.9 / (1 + rate / 160);
+    let n = Math.floor(t0 / 90) + 1; const n1 = Math.floor(t1 / 90);
+    for (let k = 0; n <= n1 && k < 64; n++, k++) {
+      const when = actx.currentTime + 0.04 + (n * 90 - t0) / (t1 - t0) * dt;
+      const c = cyls[FIRING[mod(n, 8)] - 1];
+      const src = actx.createBufferSource(), g = actx.createGain();
+      src.buffer = bangBuf; src.playbackRate.value = 0.85 + Math.min(rpm, 6600) / 11000 + (Math.random() - 0.5) * 0.04;
+      g.gain.value = gain * (c.odd ? 1 : 0.92);
+      src.connect(g); g.connect(c.odd ? panL : panR); src.start(when);
+    }
+  }
+
+  // リサイズ
+  function resize() {
+    if (renderer) {
+      const w = stage.clientWidth, h = stage.clientHeight;
+      renderer.setSize(w, h, false); camera.aspect = w / Math.max(1, h); camera.updateProjectionMatrix();
+    }
+    buildChart();
+  }
+  new ResizeObserver(resize).observe(stage);
+  new ResizeObserver(buildChart).observe(chart);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { buildChart(); if (groups.labelMake) groups.labelMake(); });
+
+  // メインループ
+  updateReadouts();
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (playing) { const dTh = rpm * 6 * speed * dt; scheduleSound(theta, theta + dTh, dt); theta += dTh; }
+    if (renderer) {
+      if (tween) {
+        tween.t = Math.min(1, tween.t + dt / 0.9); const e = 1 - Math.pow(1 - tween.t, 3);
+        camera.position.lerpVectors(tween.fp, tween.tp, e); controls.target.lerpVectors(tween.ft, tween.tt, e);
+        if (tween.t >= 1) tween = null;
+      }
+      update3D(theta); controls.update(); renderer.render(scene, camera);
+    }
+    updatePanel(theta); drawChart(theta); drawTach();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+
+</body>
+</html>
