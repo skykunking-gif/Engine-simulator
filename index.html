@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="ブラウザで動く3Dエンジンシミュレーター集。V8とV10の構造と点火を同じクランク角で動かして観察できます。">
+<meta name="description" content="ブラウザで動く3Dエンジンシミュレーター集。V6・V8・V10の構造と点火を同じクランク角で動かして観察できます。">
 <title>エンジンシミュレーター</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -30,7 +30,7 @@ body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--f-body);fon
 .eyebrow{margin:0;font-family:var(--f-mono);font-size:12px;letter-spacing:.14em;color:var(--accent)}
 h1{margin:8px 0 0;font-size:clamp(28px,5vw,40px);line-height:1.2;text-wrap:balance}
 .lede{margin:14px 0 0;color:var(--muted);max-width:60ch}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:16px;margin-top:36px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:16px;margin-top:36px}
 .card{display:flex;flex-direction:column;gap:14px;min-width:0;padding:24px;background:var(--panel);border:1px solid var(--line);border-radius:10px;color:inherit;text-decoration:none;transition:border-color .15s,transform .15s}
 .card:hover{border-color:var(--accent);transform:translateY(-2px)}
 .card:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
@@ -53,6 +53,16 @@ footer{margin-top:40px;color:var(--muted);font-size:12px}
   <p class="lede">クランク、ピストン、動弁系、燃焼ガスを同じクランク角で動かす、ブラウザ用の3Dシミュレーターです。スロー再生で、点火が気筒から気筒へ移っていく様子を追えます。</p>
 
   <div class="grid">
+    <a class="card" href="v6/index.html">
+      <div class="top"><span class="name">V6</span><span class="model">NISSAN VR38DETT<br>3.8L · 60° · TWIN TURBO</span></div>
+      <p>日産 GT-R(R35)のエンジン。スプリットピンクランクで120°ごとに等間隔点火し、エキマニ一体のツインターボが回転数に合わせて回ります。</p>
+      <dl>
+        <dt>点火間隔</dt><dd>120°</dd>
+        <dt>点火順序</dt><dd>1-2-3-4-5-6</dd>
+        <dt>動弁</dt><dd>DOHC 4バルブ</dd>
+      </dl>
+      <span class="go">V6 を開く →</span>
+    </a>
     <a class="card" href="v8/index.html">
       <div class="top"><span class="name">V8</span><span class="model">GM LS3<br>6.2L · 90°</span></div>
       <p>クロスプレーンクランクとOHVのプッシュロッド動弁系。左右のバンクが不規則に交互点火する、V8特有のリズムが分かります。</p>
